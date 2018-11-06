@@ -196,7 +196,7 @@ func generatePodSpecTemplate(org, repo, configFile, release string, test *cioper
 		fmt.Sprintf("--template=%s", templatePath))
 	container.VolumeMounts = []kubeapi.VolumeMount{
 		{Name: "cluster-profile", MountPath: clusterProfilePath},
-		{Name: "job-definition", MountPath: templatePath, SubPath: fmt.Sprintf("%s.yaml", template)},
+		{Name: "job-definition", MountPath: templatePath, SubPath: fmt.Sprintf("openshift/openshift-ansible/%s.yaml", template)},
 	}
 	container.Env = append(
 		container.Env,
