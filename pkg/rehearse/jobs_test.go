@@ -305,7 +305,7 @@ func makeSuccessfulFinishReactor(watcher watch.Interface, jobs map[string][]prow
 	}
 }
 
-func TestExecuteJobsErrors(t *testing.T) {
+func TestSubmitRehearsalsErrors(t *testing.T) {
 	testPrNumber, testNamespace, testRepoPath, testRefs := makeTestData()
 	targetRepo := "targetOrg/targetRepo"
 
@@ -333,11 +333,7 @@ func TestExecuteJobsErrors(t *testing.T) {
 			testLoggers := Loggers{logrus.New(), logrus.New()}
 			fakecs := fake.NewSimpleClientset()
 			fakeclient := fakecs.ProwV1().ProwJobs(testNamespace)
-			watcher, err := fakeclient.Watch(metav1.ListOptions{})
-			if err != nil {
-				t.Fatalf("Failed to setup watch: %v", err)
-			}
-			fakecs.Fake.PrependWatchReactor("prowjobs", makeSuccessfulFinishReactor(watcher, tc.jobs))
+
 			fakecs.Fake.PrependReactor("create", "prowjobs", func(action clientgo_testing.Action) (bool, runtime.Object, error) {
 				createAction := action.(clientgo_testing.CreateAction)
 				pj := createAction.GetObject().(*pjapi.ProwJob)
@@ -348,10 +344,49 @@ func TestExecuteJobsErrors(t *testing.T) {
 			})
 
 			executor := NewExecutor(tc.jobs, testPrNumber, testRepoPath, testRefs, true, testLoggers, fakeclient)
-			_, err = executor.ExecuteJobs()
-
-			if err == nil {
+			if _, err := executor.submitRehearsals(); err == nil {
 				t.Errorf("Expected to return error, got nil")
+			}
+		})
+	}
+}
+
+func TestSubmitRehearsalsPositive(t *testing.T) {
+	testPrNumber, testNamespace, testRepoPath, testRefs := makeTestData()
+	targetRepo := "targetOrg/targetRepo"
+
+	testCases := []struct {
+		description string
+		jobs        map[string][]prowconfig.Presubmit
+	}{{
+		description: "create a prowjob, success",
+		jobs: map[string][]prowconfig.Presubmit{targetRepo: {
+			*makeTestingPresubmit("job1", "ci/prow/job1", []string{"arg1"}, "master"),
+		}},
+	}, {
+		description: "create multiple prowjobs, success",
+		jobs: map[string][]prowconfig.Presubmit{targetRepo: {
+			*makeTestingPresubmit("job1", "ci/prow/job1", []string{"arg1"}, "master"),
+			*makeTestingPresubmit("job2", "ci/prow/job2", []string{"arg2"}, "master"),
+		}},
+	}}
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			testLoggers := Loggers{logrus.New(), logrus.New()}
+			fakecs := fake.NewSimpleClientset()
+			fakeclient := fakecs.ProwV1().ProwJobs(testNamespace)
+
+			fakecs.Fake.PrependReactor("create", "prowjobs", func(action clientgo_testing.Action) (bool, runtime.Object, error) {
+				createAction := action.(clientgo_testing.CreateAction)
+				pj := createAction.GetObject().(*pjapi.ProwJob)
+
+				return false, pj, nil
+			})
+
+			executor := NewExecutor(tc.jobs, testPrNumber, testRepoPath, testRefs, false, testLoggers, fakeclient)
+			if _, err := executor.submitRehearsals(); err != nil {
+				t.Errorf("Error was not expected")
 			}
 		})
 	}
@@ -517,7 +552,7 @@ func TestExecuteJobsPositive(t *testing.T) {
 			}
 			fakecs.Fake.PrependWatchReactor("prowjobs", makeSuccessfulFinishReactor(watcher, tc.jobs))
 
-			executor := NewExecutor(tc.jobs, testPrNumber, testRepoPath, testRefs, true, testLoggers, fakeclient)
+			executor := NewExecutor(tc.jobs, testPrNumber, testRepoPath, testRefs, false, testLoggers, fakeclient)
 			success, err := executor.ExecuteJobs()
 
 			if err != nil {
