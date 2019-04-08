@@ -11,6 +11,8 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/sets"
 	pjapi "k8s.io/test-infra/prow/apis/prowjobs/v1"
+	"k8s.io/test-infra/prow/config/secret"
+	prowflagutil "k8s.io/test-infra/prow/flagutil"
 	prowgithub "k8s.io/test-infra/prow/github"
 	pjdwapi "k8s.io/test-infra/prow/pod-utils/downwardapi"
 
@@ -47,6 +49,7 @@ type options struct {
 	allowVolumes bool
 	debugLogPath string
 	metricsPath  string
+	github       prowflagutil.GitHubOptions
 
 	releaseRepoPath string
 	rehearsalLimit  int
@@ -67,6 +70,7 @@ func gatherOptions() options {
 
 	fs.IntVar(&o.rehearsalLimit, "rehearsal-limit", 15, "Upper limit of jobs attempted to rehearse (if more jobs would be rehearsed, none will)")
 
+	o.github.AddFlags(fs)
 	fs.Parse(os.Args[1:])
 	return o
 }
@@ -277,6 +281,22 @@ func rehearseMain() int {
 		}
 		logger.WithFields(jobCountFields).Info("Would rehearse too many jobs, will not proceed")
 		return 0
+	}
+
+	secretAgent := &secret.Agent{}
+	if !o.dryRun {
+		if err := secretAgent.Start([]string{o.github.TokenPath}); err != nil {
+			logrus.WithError(err).Fatal("Error starting secrets agent.")
+		}
+	}
+
+	githubClient, err := o.github.GitHubClient(secretAgent, o.dryRun)
+	if err != nil {
+		logrus.WithError(err).Fatal("Error getting GitHub client.")
+	}
+
+	if err := rehearse.RetireStallStatuses(githubClient, jobSpec.Refs.Org, jobSpec.Refs.Repo, jobSpec.Refs.Pulls[0].SHA, rehearsals); err != nil {
+		logrus.WithError(err).Warn("couldn't retire stall statuses")
 	}
 
 	executor := rehearse.NewExecutor(rehearsals, prNumber, o.releaseRepoPath, jobSpec.Refs, o.dryRun, loggers, pjclient)

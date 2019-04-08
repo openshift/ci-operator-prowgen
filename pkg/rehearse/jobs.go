@@ -27,6 +27,7 @@ import (
 	pjclientsetfake "k8s.io/test-infra/prow/client/clientset/versioned/fake"
 	pj "k8s.io/test-infra/prow/client/clientset/versioned/typed/prowjobs/v1"
 	prowconfig "k8s.io/test-infra/prow/config"
+	"k8s.io/test-infra/prow/github"
 	"k8s.io/test-infra/prow/pjutil"
 
 	"github.com/openshift/ci-operator-prowgen/pkg/config"
@@ -484,4 +485,49 @@ func (e *Executor) submitRehearsal(job *prowconfig.Presubmit) (*pjapi.ProwJob, e
 	e.loggers.Job.WithFields(pjutil.ProwJobFields(&prowJob)).Info("Submitting a new prowjob.")
 
 	return e.pjclient.Create(&prowJob)
+}
+
+func getPRStatuses(statuses []github.Status) sets.String {
+	ret := sets.NewString()
+	for _, status := range statuses {
+		if strings.HasPrefix(status.Context, "ci/rehearse/") {
+			ret.Insert(status.Context)
+		}
+	}
+	return ret
+}
+
+func getRehearsalContexts(rehearsals []*prowconfig.Presubmit) sets.String {
+	ret := sets.NewString()
+	for _, job := range rehearsals {
+		ret.Insert(job.Context)
+	}
+	return ret
+}
+
+// RetireStallStatuses retires all job statuses that exist in the PR from previous runs that currently doesn't
+// affect the present state of the changes.
+func RetireStallStatuses(ghClient *github.Client, org, repo, SHA string, rehearsals []*prowconfig.Presubmit) error {
+	combined, err := ghClient.GetCombinedStatus(org, repo, SHA)
+	if err != nil {
+		return err
+	}
+
+	prStatuses := getPRStatuses(combined.Statuses)
+	rehearsalContexts := getRehearsalContexts(rehearsals)
+
+	for context := range prStatuses {
+		if !rehearsalContexts.Has(context) {
+			status := github.Status{
+				Context:     context,
+				State:       "success",
+				Description: "Doesn't affect this PR",
+			}
+
+			if err := ghClient.CreateStatus(org, repo, SHA, status); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
