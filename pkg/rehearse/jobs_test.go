@@ -248,7 +248,14 @@ func TestMakeRehearsalPresubmit(t *testing.T) {
 
 	expectedPresubmit.Name = "rehearse-123-pull-ci-org-repo-branch-test"
 	expectedPresubmit.Labels = map[string]string{rehearseLabel: "123"}
-	expectedPresubmit.Spec.Containers[0].Args = []string{"arg1", "arg2", "--git-ref=org/repo@branch"}
+	expectedPresubmit.UtilityConfig.ExtraRefs = []pjapi.Refs{
+		{
+			Org:     "org",
+			Repo:    "repo",
+			BaseRef: "branch",
+		},
+	}
+
 	expectedPresubmit.RerunCommand = "/test pj-rehearse"
 	expectedPresubmit.Context = "ci/rehearse/org/repo/branch/test"
 	expectedPresubmit.Optional = true
@@ -262,7 +269,7 @@ func TestMakeRehearsalPresubmit(t *testing.T) {
 	}
 }
 
-func makeTestingProwJob(namespace, jobName, context string, refs *pjapi.Refs, ciopArgs []string) *pjapi.ProwJob {
+func makeTestingProwJob(namespace, jobName, context string, refs *pjapi.Refs, ciopArgs []string, extraRefs []pjapi.Refs) *pjapi.ProwJob {
 	return &pjapi.ProwJob{
 		TypeMeta: metav1.TypeMeta{Kind: "ProwJob", APIVersion: "prow.k8s.io/v1"},
 		ObjectMeta: metav1.ObjectMeta{
@@ -284,6 +291,7 @@ func makeTestingProwJob(namespace, jobName, context string, refs *pjapi.Refs, ci
 			Type:         pjapi.PresubmitJob,
 			Job:          jobName,
 			Refs:         refs,
+			ExtraRefs:    extraRefs,
 			Report:       true,
 			Context:      context,
 			RerunCommand: "/test pj-rehearse",
@@ -461,6 +469,7 @@ func TestExecuteJobsPositive(t *testing.T) {
 	targetRepo := "targetOrg/targetRepo"
 	anotherTargetRepo := "anotherOrg/anotherRepo"
 	testCiopConfigs := config.CompoundCiopConfig{}
+	extraRefs := []pjapi.Refs{{Org: "targetOrg", Repo: "targetRepo", BaseRef: "master"}}
 
 	testCases := []struct {
 		description  string
@@ -477,13 +486,15 @@ func TestExecuteJobsPositive(t *testing.T) {
 				"rehearse-123-job1",
 				fmt.Sprintf(rehearseJobContextTemplate, targetRepo, "master", "job1"),
 				testRefs,
-				[]string{"arg1", fmt.Sprintf("--git-ref=%s@master", targetRepo)},
+				[]string{"arg1"},
+				extraRefs,
 			).Spec,
 			makeTestingProwJob(testNamespace,
 				"rehearse-123-job2",
 				fmt.Sprintf(rehearseJobContextTemplate, targetRepo, "master", "job2"),
 				testRefs,
-				[]string{"arg1", fmt.Sprintf("--git-ref=%s@master", targetRepo)},
+				[]string{"arg1"},
+				extraRefs,
 			).Spec,
 		}}, {
 		description: "two jobs in a single repo, same context but different branch",
@@ -496,13 +507,15 @@ func TestExecuteJobsPositive(t *testing.T) {
 				"rehearse-123-job1",
 				fmt.Sprintf(rehearseJobContextTemplate, targetRepo, "master", "job1"),
 				testRefs,
-				[]string{"arg1", fmt.Sprintf("--git-ref=%s@master", targetRepo)},
+				[]string{"arg1"},
+				extraRefs,
 			).Spec,
 			makeTestingProwJob(testNamespace,
 				"rehearse-123-job2",
 				fmt.Sprintf(rehearseJobContextTemplate, targetRepo, "not-master", "job2"),
 				testRefs,
-				[]string{"arg1", fmt.Sprintf("--git-ref=%s@not-master", targetRepo)},
+				[]string{"arg1"},
+				[]pjapi.Refs{{Org: "targetOrg", Repo: "targetRepo", BaseRef: "not-master"}},
 			).Spec,
 		}},
 		{
@@ -516,13 +529,15 @@ func TestExecuteJobsPositive(t *testing.T) {
 					"rehearse-123-job1",
 					fmt.Sprintf(rehearseJobContextTemplate, targetRepo, "master", "job1"),
 					testRefs,
-					[]string{"arg1", fmt.Sprintf("--git-ref=%s@master", targetRepo)},
+					[]string{"arg1"},
+					extraRefs,
 				).Spec,
 				makeTestingProwJob(testNamespace,
 					"rehearse-123-job2",
 					fmt.Sprintf(rehearseJobContextTemplate, anotherTargetRepo, "master", "job2"),
 					testRefs,
-					[]string{"arg1", fmt.Sprintf("--git-ref=%s@master", anotherTargetRepo)},
+					[]string{"arg1"},
+					[]pjapi.Refs{{Org: "anotherOrg", Repo: "anotherRepo", BaseRef: "master"}},
 				).Spec,
 			},
 		}, {
