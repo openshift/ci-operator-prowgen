@@ -1037,6 +1037,8 @@ tag_specification:
   name: origin-v3.11
   namespace: openshift
   tag: ''
+prepublish:
+  namespace: ci-prepublish
 promotion:
   name: test
   namespace: ci
@@ -1118,6 +1120,40 @@ tests:
             cpu: 10m
       serviceAccountName: ci-operator
     trigger: '(?m)^/test (?:.*? )?images(?: .*?)?$'
+  - agent: kubernetes
+    always_run: true
+    branches:
+    - branch
+    context: ci/prow/prepublish
+    decorate: true
+    decoration_config:
+      skip_cloning: true
+    labels:
+      ci-operator.openshift.io/prowgen-controlled: "true"
+    name: pull-ci-super-duper-branch-prepublish
+    rerun_command: /test prepublish
+    spec:
+      containers:
+      - args:
+        - --artifact-dir=$(ARTIFACTS)
+        - --give-pr-author-access-to-namespace=true
+        - --target=[prepublish]
+        command:
+        - ci-operator
+        env:
+        - name: CONFIG_SPEC
+          valueFrom:
+            configMapKeyRef:
+              key: super-duper-branch.yaml
+              name: ci-operator-misc-configs
+        image: ci-operator:latest
+        imagePullPolicy: Always
+        name: ""
+        resources:
+          requests:
+            cpu: 10m
+      serviceAccountName: ci-operator
+    trigger: '(?m)^/test (?:.*? )?prepublish(?: .*?)?$'
   - agent: kubernetes
     always_run: true
     branches:

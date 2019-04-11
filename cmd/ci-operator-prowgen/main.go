@@ -377,6 +377,9 @@ func generateJobs(
 		if configSpec.PromotionConfiguration != nil {
 			postsubmits[orgrepo] = append(postsubmits[orgrepo], *generatePostsubmitForTest("images", info, true, labels, generatePodSpec(info, "[images]", additionalPostsubmitArgs...)))
 		}
+		if configSpec.PrepublishConfiguration != nil {
+			presubmits[orgrepo] = append(presubmits[orgrepo], *generatePresubmitForTest("prepublish", info, generatePodSpec(info, "[prepublish]", additionalPresubmitArgs...)))
+		}
 	}
 
 	return &prowconfig.JobConfig{
