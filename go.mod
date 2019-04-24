@@ -31,4 +31,5 @@ require (
 	k8s.io/apimachinery v0.0.0-20181128191346-49ce2735e507
 	k8s.io/client-go v9.0.0+incompatible
 	k8s.io/test-infra v0.0.0-20190427170421-2228dd155e83
+	sigs.k8s.io/yaml v1.1.0
 )
