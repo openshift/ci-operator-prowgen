@@ -129,6 +129,79 @@ func TestGeneratePodSpec(t *testing.T) {
 	}
 }
 
+func TestGenerateRpmRepoOpenshiftOriginEnvVar(t *testing.T) {
+	tests := []struct {
+		info    *config.Info
+		release string
+		test    ciop.TestStepConfiguration
+
+		expected string
+	}{
+		{
+			info:    &config.Info{Org: "organization", Repo: "repo", Branch: "branch"},
+			release: "4.2",
+			test: ciop.TestStepConfiguration{
+				As:       "test",
+				Commands: "commands",
+				OpenshiftAnsibleClusterTestConfiguration: &ciop.OpenshiftAnsibleClusterTestConfiguration{
+					ClusterTestConfiguration: ciop.ClusterTestConfiguration{ClusterProfile: "gcp"},
+				},
+			},
+			expected: "https://artifacts-openshift-release-4-2.svc.ci.openshift.org/repo/",
+		},
+		{
+			info:    &config.Info{Org: "organization", Repo: "repo", Branch: "branch"},
+			release: "4.1",
+			test: ciop.TestStepConfiguration{
+				As:       "test",
+				Commands: "commands",
+				OpenshiftAnsibleClusterTestConfiguration: &ciop.OpenshiftAnsibleClusterTestConfiguration{
+					ClusterTestConfiguration: ciop.ClusterTestConfiguration{ClusterProfile: "gcp"},
+				},
+			},
+			expected: "https://artifacts-openshift-release-4-1.svc.ci.openshift.org/repo/",
+		},
+		{
+			info:    &config.Info{Org: "organization", Repo: "repo", Branch: "branch"},
+			release: "origin-v4.0",
+			test: ciop.TestStepConfiguration{
+				As:       "test",
+				Commands: "commands",
+				OpenshiftAnsibleClusterTestConfiguration: &ciop.OpenshiftAnsibleClusterTestConfiguration{
+					ClusterTestConfiguration: ciop.ClusterTestConfiguration{ClusterProfile: "gcp"},
+				},
+			},
+			expected: "https://artifacts-openshift-release-4-0.svc.ci.openshift.org/repo/",
+		},
+		{
+			info:    &config.Info{Org: "organization", Repo: "repo", Branch: "branch"},
+			release: "origin-v3.11",
+			test: ciop.TestStepConfiguration{
+				As:       "test",
+				Commands: "commands",
+				OpenshiftAnsibleClusterTestConfiguration: &ciop.OpenshiftAnsibleClusterTestConfiguration{
+					ClusterTestConfiguration: ciop.ClusterTestConfiguration{ClusterProfile: "gcp"},
+				},
+			},
+			expected: "https://artifacts-openshift-release-3-11.svc.ci.openshift.org/repo/",
+		},
+	}
+	for _, tc := range tests {
+		var podSpec *kubeapi.PodSpec
+		podSpec = generatePodSpecTemplate(tc.info, tc.release, &tc.test)
+		var rpmsRepoOpenshiftOriginValue string
+		for _, x := range podSpec.Containers[0].Env {
+			if x.Name == "RPM_REPO_OPENSHIFT_ORIGIN" {
+				rpmsRepoOpenshiftOriginValue = x.Value
+				break
+			}
+		}
+		if strings.Compare(rpmsRepoOpenshiftOriginValue, tc.expected) != 0 {
+			t.Errorf("Generated env vars differs from expected!\n%s", diff.StringDiff(tc.expected, rpmsRepoOpenshiftOriginValue))
+		}
+	}
+}
+
 func TestGeneratePodSpecTemplate(t *testing.T) {
 	tests := []struct {
 		info    *config.Info
