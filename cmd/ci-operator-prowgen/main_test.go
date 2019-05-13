@@ -220,7 +220,7 @@ func TestGeneratePodSpecTemplate(t *testing.T) {
 						{Name: "CLUSTER_TYPE", Value: "gcp"},
 						{Name: "JOB_NAME_SAFE", Value: "test"},
 						{Name: "TEST_COMMAND", Value: "commands"},
-						{Name: "RPM_REPO_OPENSHIFT_ORIGIN", Value: "https://rpms.svc.ci.openshift.org/openshift-origin-v4.0/"},
+						{Name: "RPM_REPO_OPENSHIFT_ORIGIN", Value: "https://artifacts-openshift-release-4-0.svc.ci.openshift.org/repo/"},
 					},
 					VolumeMounts: []kubeapi.VolumeMount{
 						{Name: "sentry-dsn", MountPath: "/etc/sentry-dsn", ReadOnly: true},
