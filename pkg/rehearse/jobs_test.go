@@ -33,7 +33,7 @@ import (
 )
 
 func TestConfigureRehearsalJobs(t *testing.T) {
-	makeVoume := func(name string) v1.Volume {
+	makeVolume := func(name string) v1.Volume {
 		return v1.Volume{
 			Name: "cluster-profile",
 			VolumeSource: v1.VolumeSource{
@@ -67,15 +67,15 @@ func TestConfigureRehearsalJobs(t *testing.T) {
 			makePresubmit("no-profile", v1.PodSpec{Containers: []v1.Container{{}}}),
 			makePresubmit("unchanged-profile", v1.PodSpec{
 				Containers: []v1.Container{{}},
-				Volumes:    []v1.Volume{makeVoume(config.ClusterProfilePrefix + "unchanged")},
+				Volumes:    []v1.Volume{makeVolume(config.ClusterProfilePrefix + "unchanged")},
 			}),
 			makePresubmit("changed-profile0", v1.PodSpec{
 				Containers: []v1.Container{{}},
-				Volumes:    []v1.Volume{makeVoume(config.ClusterProfilePrefix + "changed-profile0")},
+				Volumes:    []v1.Volume{makeVolume(config.ClusterProfilePrefix + "changed-profile0")},
 			}),
 			makePresubmit("changed-profile1", v1.PodSpec{
 				Containers: []v1.Container{{}},
-				Volumes:    []v1.Volume{makeVoume(config.ClusterProfilePrefix + "changed-profile1")},
+				Volumes:    []v1.Volume{makeVolume(config.ClusterProfilePrefix + "changed-profile1")},
 			}),
 		},
 	}
@@ -86,9 +86,12 @@ func TestConfigureRehearsalJobs(t *testing.T) {
 		SHA:      "85c627078710b8beee65d06d0cf157094fc46b03",
 		Filename: filepath.Join(config.ClusterProfilesPath, "changed-profile1"),
 	}}
-	ret := ConfigureRehearsalJobs(jobs, config.CompoundCiopConfig{}, 1234, Loggers{logrus.New(), logrus.New()}, true, nil, profiles)
+
+	jc := NewJobConfigurer(jobs, nil, config.CompoundCiopConfig{}, 1234, Loggers{logrus.New(), logrus.New()}, true, nil, profiles)
+
+	presubmits, _ := jc.ConfigureRehearsalJobs()
 	var names []string
-	for _, j := range ret {
+	for _, j := range presubmits {
 		if vs := j.Spec.Volumes; len(vs) == 0 {
 			names = append(names, "")
 		} else {
@@ -131,7 +134,6 @@ func makeCMReference(cmName, key string) *v1.EnvVarSource {
 }
 
 func TestInlineCiopConfig(t *testing.T) {
-	testTargetRepo := "org/repo"
 	testCiopConfigInfo := config.Info{
 		Org:    "org",
 		Repo:   "repo",
@@ -186,7 +188,7 @@ func TestInlineCiopConfig(t *testing.T) {
 			job := makeTestingPresubmitForEnv(tc.sourceEnv)
 			expectedJob := makeTestingPresubmitForEnv(tc.expectedEnv)
 
-			newJob, err := inlineCiOpConfig(job, testTargetRepo, tc.configs, testLoggers)
+			err := inlineCiOpConfig(job.Spec.Containers[0], tc.configs, testLoggers)
 
 			if tc.expectedError && err == nil {
 				t.Errorf("Expected inlineCiopConfig() to return an error, none returned")
@@ -199,8 +201,8 @@ func TestInlineCiopConfig(t *testing.T) {
 					return
 				}
 
-				if !equality.Semantic.DeepEqual(expectedJob, newJob) {
-					t.Errorf("Returned job differs from expected:\n%s", diff.ObjectReflectDiff(expectedJob, newJob))
+				if !equality.Semantic.DeepEqual(expectedJob, job) {
+					t.Errorf("Returned job differs from expected:\n%s", diff.ObjectReflectDiff(expectedJob, job))
 				}
 			}
 		})
@@ -378,8 +380,10 @@ func TestExecuteJobsErrors(t *testing.T) {
 				return false, nil, nil
 			})
 
-			rehearsals := ConfigureRehearsalJobs(tc.jobs, testCiopConfigs, testPrNumber, testLoggers, true, nil, nil)
-			executor := NewExecutor(rehearsals, testPrNumber, testRepoPath, testRefs, true, testLoggers, fakeclient)
+			jc := NewJobConfigurer(tc.jobs, nil, testCiopConfigs, testPrNumber, testLoggers, true, nil, nil)
+
+			presubmits, periodics := jc.ConfigureRehearsalJobs()
+			executor := NewExecutor(presubmits, periodics, testPrNumber, testRepoPath, testRefs, true, testLoggers, fakeclient)
 			_, err = executor.ExecuteJobs()
 
 			if err == nil {
@@ -447,8 +451,9 @@ func TestExecuteJobsUnsuccessful(t *testing.T) {
 				return true, ret, nil
 			})
 
-			rehearsals := ConfigureRehearsalJobs(tc.jobs, testCiopConfigs, testPrNumber, testLoggers, true, nil, nil)
-			executor := NewExecutor(rehearsals, testPrNumber, testRepoPath, testRefs, false, testLoggers, fakeclient)
+			jc := NewJobConfigurer(tc.jobs, nil, testCiopConfigs, testPrNumber, testLoggers, true, nil, nil)
+			presubmits, periodics := jc.ConfigureRehearsalJobs()
+			executor := NewExecutor(presubmits, periodics, testPrNumber, testRepoPath, testRefs, false, testLoggers, fakeclient)
 			success, _ := executor.ExecuteJobs()
 
 			if success {
@@ -552,8 +557,9 @@ func TestExecuteJobsPositive(t *testing.T) {
 			}
 			fakecs.Fake.PrependWatchReactor("prowjobs", makeSuccessfulFinishReactor(watcher, tc.jobs))
 
-			rehearsals := ConfigureRehearsalJobs(tc.jobs, testCiopConfigs, testPrNumber, testLoggers, true, nil, nil)
-			executor := NewExecutor(rehearsals, testPrNumber, testRepoPath, testRefs, true, testLoggers, fakeclient)
+			jc := NewJobConfigurer(tc.jobs, nil, testCiopConfigs, testPrNumber, testLoggers, true, nil, nil)
+			presubmits, periodics := jc.ConfigureRehearsalJobs()
+			executor := NewExecutor(presubmits, periodics, testPrNumber, testRepoPath, testRefs, true, testLoggers, fakeclient)
 			success, err := executor.ExecuteJobs()
 
 			if err != nil {
@@ -676,7 +682,7 @@ func TestWaitForJobs(t *testing.T) {
 				return true, w, nil
 			})
 
-			executor := NewExecutor(nil, 0, "", &pjapi.Refs{}, true, loggers, cs.ProwV1().ProwJobs("test"))
+			executor := NewExecutor(nil, nil, 0, "", &pjapi.Refs{}, true, loggers, cs.ProwV1().ProwJobs("test"))
 			success, err := executor.waitForJobs(tc.pjs, "")
 			if err != tc.err {
 				t.Fatalf("want `err` == %v, got %v", tc.err, err)
@@ -702,7 +708,7 @@ func TestWaitForJobsRetries(t *testing.T) {
 		return true, ret, nil
 	})
 
-	executor := NewExecutor(nil, 0, "", &pjapi.Refs{}, true, Loggers{logrus.New(), logrus.New()}, cs.ProwV1().ProwJobs("test"))
+	executor := NewExecutor(nil, nil, 0, "", &pjapi.Refs{}, true, Loggers{logrus.New(), logrus.New()}, cs.ProwV1().ProwJobs("test"))
 	success, err := executor.waitForJobs(sets.String{"j": {}}, "")
 	if err != nil {
 		t.Fatal(err)
@@ -729,7 +735,7 @@ func TestWaitForJobsLog(t *testing.T) {
 	})
 	loggers := Loggers{jobLogger, dbgLogger}
 
-	executor := NewExecutor(nil, 0, "", &pjapi.Refs{}, true, loggers, cs.ProwV1().ProwJobs("test"))
+	executor := NewExecutor(nil, nil, 0, "", &pjapi.Refs{}, true, loggers, cs.ProwV1().ProwJobs("test"))
 	_, err := executor.waitForJobs(sets.NewString("success", "failure"), "")
 	if err != nil {
 		t.Fatal(err)
@@ -775,13 +781,6 @@ func TestFilterJob(t *testing.T) {
 			},
 		},
 		{
-			description: "jobs running over multiple branches",
-			crippleFunc: func(j *prowconfig.Presubmit) *prowconfig.Presubmit {
-				j.Brancher.Branches = append(j.Brancher.Branches, "^feature-branch$")
-				return j
-			},
-		},
-		{
 			description: "jobs that need additional volumes mounted, not allowed",
 			crippleFunc: func(j *prowconfig.Presubmit) *prowconfig.Presubmit {
 				j.Spec.Volumes = []v1.Volume{{Name: "volume"}}
@@ -802,7 +801,7 @@ func TestFilterJob(t *testing.T) {
 		t.Run(tc.description, func(t *testing.T) {
 			basePresubmit := makeBasePresubmit()
 			tc.crippleFunc(basePresubmit)
-			err := filterJob(basePresubmit, tc.volumesAllowed)
+			err := filterJob(basePresubmit.Spec, tc.volumesAllowed)
 			if err == nil && !tc.valid {
 				t.Errorf("Expected filterJob() to return error")
 			}
