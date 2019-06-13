@@ -1,3 +1,5 @@
+**Warning: development has moved to https://github.com/openshift/ci-tools.git**
+
 # Prow job generator for ci-operator
 
 The purpose of this tool is to reduce an amount of boilerplate that component
