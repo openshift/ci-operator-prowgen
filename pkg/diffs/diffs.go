@@ -2,6 +2,7 @@ package diffs
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -226,6 +227,29 @@ func GetPresubmitsForClusterProfiles(prowConfig *prowconfig.Config, profiles []c
 				ret.Add(repo, job)
 			}
 		}
+	}
+	return ret
+}
+
+// GetChangedPeriodics returns the changed presubmits mapped by their name.
+func GetChangedPeriodics(prowMasterConfig, prowPRConfig *prowconfig.Config, logger *logrus.Entry) []prowconfig.Periodic {
+	masterPeriodics := getPeriodicsPerName(prowMasterConfig.JobConfig.AllPeriodics())
+	prPeriodics := getPeriodicsPerName(prowPRConfig.JobConfig.AllPeriodics())
+
+	var changedPeriodics []prowconfig.Periodic
+	for name, job := range prPeriodics {
+		if !reflect.DeepEqual(masterPeriodics[name], job) {
+			changedPeriodics = append(changedPeriodics, job)
+		}
+	}
+
+	return changedPeriodics
+}
+
+func getPeriodicsPerName(periodics []prowconfig.Periodic) map[string]prowconfig.Periodic {
+	ret := make(map[string]prowconfig.Periodic, len(periodics))
+	for _, periodic := range periodics {
+		ret[periodic.Name] = periodic
 	}
 	return ret
 }
